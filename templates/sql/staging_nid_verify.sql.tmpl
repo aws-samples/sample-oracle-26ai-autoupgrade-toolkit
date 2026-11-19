@@ -1,0 +1,10 @@
+-- staging_nid_verify: after nid renames the staging DB_NAME, mount under the
+-- edited pfile and report the DB_NAME / DB_UNIQUE_NAME so the phase can confirm
+-- the rename succeeded (nid returns non-zero even on success, so state - not
+-- the exit code - is the judge).
+whenever sqlerror exit failure
+startup mount pfile='${STAGING_PFILE}';
+set heading off feedback off pagesize 0 verify off echo off
+select 'DBNAME=' || lower(name) || '|DBUNIQUE=' || lower(db_unique_name)
+  from v$database;
+exit

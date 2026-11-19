@@ -1,0 +1,27 @@
+# SOURCE backup script (rendered by bin/10_source_backup.sh).
+# Runs on SOURCE via: rman target / @<rendered>.rman
+# Only allowlisted dollar-brace tokens are substituted; RMAN %U is literal.
+# NOTE: we deliberately do NOT run 'configure controlfile autobackup ...' here.
+# CONFIGURE is a PERSISTENT change to the SOURCE database's RMAN settings; it
+# would redirect the customer's own controlfile autobackups into this migration
+# directory. Instead we take an explicit 'backup current controlfile' (ctl_%U)
+# inside the run block below, and the restore uses that piece. This keeps the
+# source strictly read-only (its RMAN configuration is never modified).
+run {
+  allocate channel c1 device type disk format '${SOURCE_BACKUP_RUN_DIR}/db_%U';
+  # Job-scoped only (reverts at end of run) - this is NOT a persistent CONFIGURE,
+  # so the source's RMAN configuration is left unchanged. If the source happens
+  # to have controlfile autobackup ON, this makes that autobackup land in our run
+  # dir rather than wherever the source points; if it is OFF (default) it is a
+  # harmless no-op. The restore uses the explicit ctl_%U piece either way.
+  set controlfile autobackup format for device type disk to '${SOURCE_BACKUP_RUN_DIR}/cf_%F';
+  backup as compressed backupset incremental level 0 database
+    tag '${SOURCE_BACKUP_TAG}'
+    plus archivelog tag '${SOURCE_BACKUP_TAG}_ARC';
+  backup current controlfile tag '${SOURCE_BACKUP_TAG}_CF'
+    format '${SOURCE_BACKUP_RUN_DIR}/ctl_%U';
+  backup spfile tag '${SOURCE_BACKUP_TAG}_SPF'
+    format '${SOURCE_BACKUP_RUN_DIR}/spf_%U';
+  release channel c1;
+}
+exit

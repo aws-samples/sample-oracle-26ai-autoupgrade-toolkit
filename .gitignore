@@ -1,0 +1,31 @@
+# Runtime-produced data: rendered templates, logs, state, manifest.
+# Everything under the log base dir (default <toolkit>/run) is ephemeral.
+run/
+/run/
+
+# Local, site-specific configuration. The committed examples MUST stay tracked.
+*.conf
+!conf/*.example
+conf/_test.conf
+
+# Secret material must never be committed. Only the template is tracked.
+secrets.env
+*.secrets.env
+!conf/secrets.env.example
+
+# Security/code scan reports (artifacts, not source)
+scan-report*.json
+*.scan-report.json
+
+# Local security-scan working folders (ASH / Holmes)
+.ash/
+.holmes/
+.holmesignore
+
+# Security review report/summary documents (artifacts, not source)
+Security_Review_*.md
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store

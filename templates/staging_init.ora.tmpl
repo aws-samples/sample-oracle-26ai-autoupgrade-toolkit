@@ -1,0 +1,21 @@
+# Staging 19c instance pfile (rendered by bin/30_target_restore.sh).
+# db_name MUST be the SOURCE db_name: the restored control file carries it and
+# the instance will not MOUNT otherwise (ORA-01103). nid changes it later, only
+# when TARGET_STAGING_DB_NAME differs from SOURCE_DB_NAME.
+# Datafiles are relocated by OMF (db_create_file_dest), NOT by
+# db_file_name_convert. Redo is relocated by explicit ALTER DATABASE RENAME
+# FILE, NOT by log_file_name_convert.
+*.db_name='${SOURCE_DB_NAME}'
+*.db_unique_name='${TARGET_STAGING_SID}'
+*.db_create_file_dest='${TARGET_DATAFILE_DEST}'
+*.control_files='${STAGING_CONTROL_FILE}'
+*.audit_file_dest='${STAGING_ADUMP_DIR}'
+*.audit_trail='DB'
+*.diagnostic_dest='${TARGET_ORACLE_BASE}'
+*.sga_target=${STAGING_SGA_MB}M
+*.pga_aggregate_target=${STAGING_PGA_MB}M
+*.compatible='${STAGING_COMPATIBLE}'
+*.undo_tablespace='${STAGING_UNDO_TABLESPACE}'
+*.db_block_size=${STAGING_DB_BLOCK_SIZE}
+*.open_cursors=300
+*.processes=300

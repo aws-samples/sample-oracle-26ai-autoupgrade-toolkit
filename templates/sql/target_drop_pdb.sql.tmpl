@@ -1,0 +1,6 @@
+-- target_drop_pdb: close and drop a colliding PDB including its datafiles.
+-- Only reached with --force and an explicit confirmation (see bin/40).
+whenever sqlerror exit failure
+alter pluggable database ${TARGET_PDB_NAME} close immediate;
+drop pluggable database ${TARGET_PDB_NAME} including datafiles;
+exit

@@ -1,0 +1,29 @@
+-- source_precheck: assert the SOURCE non-CDB is OPEN READ WRITE and at the
+-- expected major version. A backup "plus archivelog" and the proof query both
+-- require an open read-write source (restore-spec RS2 / override B).
+whenever sqlerror exit failure
+set serveroutput on size unlimited
+declare
+  v_status  varchar2(30);
+  v_open    varchar2(30);
+  v_ver     varchar2(64);
+begin
+  select status    into v_status from v$instance;
+  select open_mode into v_open   from v$database;
+  select version_full into v_ver from v$instance;
+  if v_status <> 'OPEN' then
+    raise_application_error(-20001,
+      'SOURCE instance is not OPEN (status='||v_status||'); preflight requires OPEN READ WRITE');
+  end if;
+  if v_open <> 'READ WRITE' then
+    raise_application_error(-20002,
+      'SOURCE is not READ WRITE (open_mode='||v_open||'); preflight rejects mounted-only');
+  end if;
+  if v_ver not like '${SOURCE_EXPECTED_VERSION}' || '%' then
+    raise_application_error(-20003,
+      'SOURCE version '||v_ver||' does not match expected prefix ${SOURCE_EXPECTED_VERSION}');
+  end if;
+  dbms_output.put_line('SOURCE_PRECHECK_OK status='||v_status||' open_mode='||v_open||' version='||v_ver);
+end;
+/
+exit

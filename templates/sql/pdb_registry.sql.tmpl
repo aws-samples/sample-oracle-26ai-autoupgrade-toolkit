@@ -1,0 +1,11 @@
+-- pdb_registry: inside the new PDB, report CATALOG / CATPROC version and
+-- status. The phase fails if either is not VALID or version_full does not begin
+-- with TARGET_EXPECTED_VERSION. Emits comp_id|version_full|status per row.
+whenever sqlerror exit failure
+alter session set container=${TARGET_PDB_NAME};
+set lines 200 pages 0 feedback off heading off verify off echo off
+select comp_id || '|' || version_full || '|' || status
+  from dba_registry
+ where comp_id in ('CATALOG', 'CATPROC')
+ order by comp_id;
+exit

@@ -1,0 +1,19 @@
+# AutoUpgrade config (rendered by bin/40_autoupgrade.sh).
+# upg1.* keys describe the non-CDB-to-PDB deploy of the restored staging
+# instance into the 26ai CDB. The optional block carries target_pdb_copy_option
+# and any verbatim AUTOUPGRADE_EXTRA_OPTIONS, emitted only when configured.
+global.autoupg_log_dir=${AUTOUPGRADE_LOG_DIR}
+upg1.source_home=${TARGET_STAGING_HOME}
+upg1.target_home=${TARGET_26AI_HOME}
+upg1.sid=${TARGET_STAGING_SID}
+upg1.target_cdb=${TARGET_CDB_SID}
+upg1.target_pdb_name=${TARGET_PDB_NAME}
+upg1.start_time=${AUTOUPGRADE_START_TIME}
+# The staging instance is a disposable restored copy, so skip AutoUpgrade's
+# guaranteed restore point (it requires an FRA the staging pfile does not set,
+# otherwise GRP-100 "recovery destination path has not been specified").
+# Rollback for this workflow = drop staging and re-restore from the RMAN backup
+# (the real source is untouched). To use a flashback restore point instead, set
+# db_recovery_file_dest in the staging pfile and change this to 'yes'.
+upg1.restoration=no
+${AUTOUPGRADE_OPTIONAL_LINES}

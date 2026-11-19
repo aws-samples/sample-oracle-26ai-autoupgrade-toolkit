@@ -1,0 +1,10 @@
+-- pdb_violations: list unresolved plug-in violations for the new PDB. The phase
+-- fails only on an unresolved ERROR; a Traditional Audit WARNING/PENDING row is
+-- benign and only reported. Emits TYPE|STATUS|message per row.
+whenever sqlerror exit failure
+set lines 200 pages 0 feedback off heading off verify off echo off
+select type || '|' || status || '|' || substr(message, 1, 120)
+  from pdb_plug_in_violations
+ where name = upper('${TARGET_PDB_NAME}')
+   and status <> 'RESOLVED';
+exit

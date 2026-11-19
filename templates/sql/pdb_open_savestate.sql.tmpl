@@ -1,0 +1,28 @@
+-- pdb_open_savestate: proactively ensure the new PDB is open read write and
+-- its state is saved (so it auto-opens with the CDB). We CHECK first and only
+-- act when needed, so no ORA-65019 "already open" (or duplicate save-state)
+-- error is ever produced - the block stays exit-failure throughout.
+whenever sqlerror exit failure
+alter session set container=CDB$ROOT;
+set serveroutput on
+declare
+  l_open v$pdbs.open_mode%type;
+  l_cnt  number;
+begin
+  select open_mode into l_open from v$pdbs where name = '${TARGET_PDB_NAME}';
+  if l_open <> 'READ WRITE' then
+    execute immediate 'alter pluggable database ${TARGET_PDB_NAME} open read write';
+    dbms_output.put_line('opened ${TARGET_PDB_NAME} read write (was '||l_open||')');
+  else
+    dbms_output.put_line('${TARGET_PDB_NAME} already open read write');
+  end if;
+  select count(*) into l_cnt from dba_pdb_saved_states where con_name = '${TARGET_PDB_NAME}';
+  if l_cnt = 0 then
+    execute immediate 'alter pluggable database ${TARGET_PDB_NAME} save state';
+    dbms_output.put_line('saved state for ${TARGET_PDB_NAME}');
+  else
+    dbms_output.put_line('${TARGET_PDB_NAME} state already saved');
+  end if;
+end;
+/
+exit

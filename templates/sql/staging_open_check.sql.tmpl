@@ -1,0 +1,23 @@
+-- staging_open_check: pre-AutoUpgrade assertion that the connected instance is
+-- the staging SID and is OPEN READ WRITE (AutoUpgrade's non-CDB-to-PDB describe
+-- requires the source open read write).
+whenever sqlerror exit failure
+set serveroutput on size unlimited
+declare
+  v_sid   varchar2(64);
+  v_open  varchar2(30);
+begin
+  select lower(instance_name) into v_sid  from v$instance;
+  select open_mode            into v_open from v$database;
+  if v_sid <> lower('${TARGET_STAGING_SID}') then
+    raise_application_error(-20010,
+      'connected SID '||v_sid||' is not the staging SID ${TARGET_STAGING_SID}');
+  end if;
+  if v_open <> 'READ WRITE' then
+    raise_application_error(-20011,
+      'staging instance is not READ WRITE (open_mode='||v_open||')');
+  end if;
+  dbms_output.put_line('STAGING_OPEN_CHECK_OK sid='||v_sid||' open_mode='||v_open);
+end;
+/
+exit

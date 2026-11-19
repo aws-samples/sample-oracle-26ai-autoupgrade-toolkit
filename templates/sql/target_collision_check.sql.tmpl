@@ -1,0 +1,8 @@
+-- target_collision_check: does a PDB of the target name already exist in the
+-- CDB? Emits PDB_EXISTS=<count> for the phase to evaluate (default FAIL on >0).
+whenever sqlerror exit failure
+set heading off feedback off pagesize 0 verify off echo off
+select 'PDB_EXISTS=' || count(*)
+  from cdb_pdbs
+ where upper(pdb_name) = upper('${TARGET_PDB_NAME}');
+exit

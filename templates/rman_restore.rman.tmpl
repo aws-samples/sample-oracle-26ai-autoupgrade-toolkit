@@ -1,0 +1,17 @@
+# TARGET restore script (rendered by bin/30_target_restore.sh) - RESTORE ONLY.
+# Controlfile + catalog + restore + recover. Datafiles relocate via OMF
+# (db_create_file_dest in the staging pfile) + "switch database to copy".
+# NO redo rename, NO open resetlogs here - those run via sqlplus templates.
+# Runs on TARGET under the staging home via: rman target / @<rendered>.rman
+startup nomount pfile='${STAGING_PFILE}';
+set dbid ${SOURCE_DBID};
+restore controlfile from '${SHIPPED_CTL_AUTOBACKUP_PIECE}';
+alter database mount;
+catalog start with '${TARGET_TRANSFER_DIR}' noprompt;
+run {
+  set newname for database to new;
+  restore database;
+  switch datafile all;
+  recover database;
+}
+exit

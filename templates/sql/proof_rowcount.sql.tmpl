@@ -1,0 +1,7 @@
+-- proof_rowcount: run the configurable data-integrity query and emit a single
+-- comparable scalar prefixed so the phase can parse it. Used on SOURCE at
+-- backup time and inside the new PDB at verify time.
+whenever sqlerror exit failure
+set heading off feedback off pagesize 0 verify off echo off serveroutput off
+select 'PROOF_VALUE=' || (${BEHAVIOR_PROOF_QUERY}) from dual;
+exit

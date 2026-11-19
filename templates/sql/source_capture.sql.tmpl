@@ -1,0 +1,52 @@
+-- source_capture: emit the manifest inputs while the SOURCE is OPEN READ WRITE
+-- (restore-spec RS1). One structured line per fact so the phase can parse them:
+--   KV|<key>|<value>
+--   DATAFILE|<file#>|<path>
+--   REDO|<group#>|<member>
+--   TEMP|<tablespace>|<path>|<bytes>
+-- Output goes both to stdout (parsed by the phase) and the spool file.
+whenever sqlerror exit failure
+set serveroutput on size unlimited
+set lines 32767 pages 0 trimspool on feedback off heading off echo off verify off
+spool ${SOURCE_CAPTURE_SPOOL}
+begin
+  for r in (select dbid, name from v$database) loop
+    dbms_output.put_line('KV|SOURCE_DBID|'||r.dbid);
+    dbms_output.put_line('KV|SOURCE_DB_NAME|'||r.name);
+  end loop;
+  for r in (select value from nls_database_parameters where parameter='NLS_CHARACTERSET') loop
+    dbms_output.put_line('KV|NLS_CHARACTERSET|'||r.value);
+  end loop;
+  -- Physical attributes the staging pfile must inherit from the SOURCE, not
+  -- assume: standard block size (ORA-00058 on mismatch), undo tablespace name
+  -- (must exist in the restored DB), and compatible (ORA-00201 if lower).
+  for r in (select value from v$parameter where name='db_block_size') loop
+    dbms_output.put_line('KV|DB_BLOCK_SIZE|'||r.value);
+  end loop;
+  for r in (select value from v$parameter where name='undo_tablespace') loop
+    dbms_output.put_line('KV|UNDO_TABLESPACE|'||r.value);
+  end loop;
+  for r in (select value from v$parameter where name='compatible') loop
+    dbms_output.put_line('KV|SOURCE_COMPATIBLE|'||r.value);
+  end loop;
+  for r in (select file# fno, name fn from v$datafile order by file#) loop
+    dbms_output.put_line('DATAFILE|'||r.fno||'|'||r.fn);
+  end loop;
+  for r in (select l.group# grp, f.member mem
+              from v$log l join v$logfile f on l.group# = f.group#
+             where f.type = 'ONLINE'
+             order by l.group#, f.member) loop
+    dbms_output.put_line('REDO|'||r.grp||'|'||r.mem);
+  end loop;
+  -- Tempfile CONFIGURED size from the data dictionary (dba_temp_files), not
+  -- v$tempfile.bytes which can read 0 until the tempfile is physically
+  -- materialized after a restart. The source is OPEN, so this is authoritative.
+  for r in (select tablespace_name tsn, file_name tfn, bytes b
+              from dba_temp_files
+             order by file_id) loop
+    dbms_output.put_line('TEMP|'||r.tsn||'|'||r.tfn||'|'||r.b);
+  end loop;
+end;
+/
+spool off
+exit

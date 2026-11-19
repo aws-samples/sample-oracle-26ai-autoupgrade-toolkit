@@ -1,0 +1,9 @@
+-- staging_relocate_redo: rename every online redo member (listed in the
+-- manifest, captured while SOURCE was open) to a UNIQUE target path
+-- redo_g<group#>_m<idx>.log under TARGET_REDO_DEST (override E). Runs while the
+-- staging instance is MOUNTED, before OPEN RESETLOGS. The body is generated
+-- from the manifest by bin/30_target_restore.sh; under --dry-run with no
+-- manifest it is a single marked placeholder comment.
+whenever sqlerror exit failure
+${RELOCATE_REDO_BODY}
+exit

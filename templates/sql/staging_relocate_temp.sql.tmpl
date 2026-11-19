@@ -1,0 +1,9 @@
+-- staging_relocate_temp: for each tempfile in the manifest, add a replacement
+-- tempfile under TARGET_DATAFILE_DEST at the captured size, then drop the
+-- missing source tempfile (add-new-then-drop-old keeps each temp tablespace
+-- valid). Runs after OPEN RESETLOGS. The body is generated from the manifest
+-- by bin/30_target_restore.sh; under --dry-run with no manifest it is a single
+-- marked placeholder comment.
+whenever sqlerror exit failure
+${RELOCATE_TEMP_BODY}
+exit

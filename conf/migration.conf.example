@@ -1,0 +1,246 @@
+#==============================================================================
+# Oracle 19c non-CDB -> 26ai PDB migration toolkit - configuration template.
+#
+# Copy this file, edit the values for your two hosts, and pass it with
+#   bin/migrate.sh --config <your-file>
+#
+# PARSING RULES (enforced by lib/common.sh::load_config):
+#   * One KEY=value per line. NO spaces around '=' (write KEY=value, not KEY = value).
+#   * Keys are UPPERCASE; the value is everything after the first '='.
+#   * One surrounding pair of single or double quotes is stripped.
+#   * Lines that are blank or start with '#' are ignored.
+#   * The file is parsed line-by-line and NEVER sourced/eval'd, so shell
+#     expansions ($VAR, $(...), backticks) are taken literally - do not use them.
+#   * Unknown-but-well-formed keys are warned about and ignored.
+#
+# SECRETS DO NOT BELONG HERE. Database auth uses OS authentication
+# ('/ as sysdba') first. Any password (e.g. an SSH transport password) goes in a
+# separate 0600 file referenced by SECRETS_FILE - see conf/secrets.env.example.
+# Required keys are marked [req]; conditional keys [cond]; the rest are optional
+# and fall back to the default shown.
+#==============================================================================
+
+
+#------------------------------------------------------------------------------
+# SOURCE_* : the running 19c non-CDB and the host it lives on.
+#------------------------------------------------------------------------------
+# Hostname or IP of the source host. Leave as localhost for a single-host test.
+SOURCE_HOST=localhost
+# SSH login user on the source host (used only when SOURCE_HOST is remote).
+SOURCE_SSH_USER=oracle
+# SSH port on the source host.
+SOURCE_SSH_PORT=22
+# [cond] Private key for SSH to the source host; required when SOURCE_HOST is
+# remote. Key file perms must be <= 0600. Key-only auth; no passwords.
+#SOURCE_SSH_KEY=/home/oracle/.ssh/id_rsa_migration
+# OS user that owns the source Oracle installation (DB actions run as this user).
+SOURCE_OS_USER=oracle
+# [req] ORACLE_BASE on the source host.
+SOURCE_ORACLE_BASE=/u01/app/oracle
+# [req] ORACLE_HOME of the running 19c instance on the source host.
+SOURCE_ORACLE_HOME=/u01/app/oracle/product/19.0.0/dbhome_1
+# [req] ORACLE_SID of the running 19c non-CDB. Regex: ^[A-Za-z][A-Za-z0-9_$]{0,11}$
+SOURCE_ORACLE_SID=ORCL
+# DB name of the source database. Defaults to SOURCE_ORACLE_SID when unset.
+#SOURCE_DB_NAME=ORCL
+# [req] Directory on the source host where the RMAN backup is written. Needs
+# free space for a compressed level-0 backup plus archivelogs.
+SOURCE_BACKUP_DIR=/u01/backup/migration
+# Backup tag. Left unset it is materialized to MIG_<UTC_TS> and recorded in the
+# run manifest so a resume reuses the same tag.
+#SOURCE_BACKUP_TAG=
+# Expected source major version (advisory preflight check).
+SOURCE_EXPECTED_VERSION=19
+# Expected source database character set (advisory preflight check).
+SOURCE_EXPECTED_CHARSET=AL32UTF8
+# [cond] Last-resort datafile/redo path list (space-separated) used ONLY for the
+# single-host overlap check when the source is unreachable at preflight. A run
+# that proceeds to backup still requires the source OPEN READ WRITE.
+#SOURCE_DATAFILE_PATHS=/u02/oradata/ORCL/system01.dbf /u02/oradata/ORCL/sysaux01.dbf
+
+
+#------------------------------------------------------------------------------
+# SOURCE connection mode : how the toolkit reaches the SOURCE database.
+#
+#   os  (default) - run on the source host (locally or via SSH) using OS
+#                   authentication ("/ as sysdba"). Requires SSH/OS access to
+#                   the source and the SOURCE_* host/home settings above.
+#   net           - the source is reachable ONLY over Oracle Net (no SSH, no OS
+#                   login). sqlplus/rman run on THIS (orchestrator) host using
+#                   the 19c client in TARGET_STAGING_HOME and connect with the
+#                   credentials below. net REQUIRES TRANSPORT_METHOD=shared (the
+#                   backup lands on a shared mount both hosts see). Source-side
+#                   unified-audit .bin remediation is not available in net mode.
+#------------------------------------------------------------------------------
+SOURCE_CONN_MODE=os
+# [cond: net] Either a full EZConnect string / TNS alias ...
+#SOURCE_CONNECT_STRING=//source-host:1521/ORCLSVC
+# ... or the discrete pieces (used to build //host:port/service):
+#SOURCE_DB_HOST=source-host
+#SOURCE_DB_PORT=1521
+#SOURCE_DB_SERVICE=ORCLSVC
+# [cond: net] Dedicated migration DB user (NOT sys). It needs: CREATE SESSION,
+# SELECT_CATALOG_ROLE (to read v$ views), SELECT on whatever BEHAVIOR_PROOF_QUERY
+# reads, and SYSBACKUP (RMAN requires SYSBACKUP or SYSDBA). Password -> SECRETS_FILE.
+#SOURCE_DB_USER=migrator
+# sqlplus connect role: normal (default) | sysdba | sysbackup
+SOURCE_DB_ROLE=normal
+# rman connect role: sysbackup (default) | sysdba  (RMAN cannot connect as normal)
+SOURCE_RMAN_ROLE=sysbackup
+# SOURCE_DB_PASSWORD is a SECRET: set it in the 0600 SECRETS_FILE, never here.
+
+
+#------------------------------------------------------------------------------
+# TARGET_* : the host that holds the pre-installed 19c staging home and the
+#            26ai home, and that will run the destination CDB.
+#------------------------------------------------------------------------------
+# Hostname or IP of the target host. Leave as localhost to collapse SOURCE and
+# TARGET onto one host (single-host test mode).
+TARGET_HOST=localhost
+# SSH login user on the target host (used only when TARGET_HOST is remote).
+TARGET_SSH_USER=oracle
+# SSH port on the target host.
+TARGET_SSH_PORT=22
+# [cond] Private key for SSH to the target host; required when TARGET_HOST is
+# remote. Key file perms must be <= 0600.
+#TARGET_SSH_KEY=/home/oracle/.ssh/id_rsa_migration
+# OS user that owns the target Oracle installation.
+TARGET_OS_USER=oracle
+# [req] ORACLE_BASE on the target host.
+TARGET_ORACLE_BASE=/u01/app/oracle
+# [req] 19c staging ORACLE_HOME on the target host (must provide bin/rman,
+# bin/nid). The backup is restored here before AutoUpgrade.
+TARGET_STAGING_HOME=/u01/app/oracle/product/19.0.0/dbhome_1
+# [req] 26ai ORACLE_HOME on the target host (must provide the AutoUpgrade jar and
+# a JDK). The destination CDB runs from this home.
+TARGET_26AI_HOME=/u01/app/oracle/product/26.0.0/dbhome_1
+# [req] ORACLE_SID of the destination container database (CDB) on the target.
+# Must differ from the source SID and from the staging SID on a shared host.
+TARGET_CDB_SID=CDB1
+# [req] Directory on the target host that receives the shipped backup pieces.
+TARGET_TRANSFER_DIR=/u01/transfer/migration
+# [req] OMF base for restored datafiles (drives db_create_file_dest in the
+# staging pfile). Needs free space for the full restored database.
+TARGET_DATAFILE_DEST=/u02/oradata
+# Destination for relocated online redo logs. Defaults to TARGET_DATAFILE_DEST.
+#TARGET_REDO_DEST=/u03/redo
+# [cond] Staging-instance SID. Leave unset to let the toolkit derive a SID that
+# is distinct from the CDB SID and (on a shared host) from the live source SID.
+#TARGET_STAGING_SID=
+# Final DB name after the staging rename (nid). Defaults to SOURCE_DB_NAME, which
+# keeps the name; set it only to rename during migration. See MATCH_SOURCE_NAME.
+#TARGET_STAGING_DB_NAME=
+# [cond] Name of the migrated PDB inside the CDB. Derived from SOURCE_DB_NAME when
+# MATCH_SOURCE_NAME=true; REQUIRED when MATCH_SOURCE_NAME=false.
+# Regex: ^[A-Za-z][A-Za-z0-9_$]{0,29}$
+#TARGET_PDB_NAME=
+# Memory (MB) for the staging instance. Minimum 800.
+TARGET_STAGING_MEMORY_MB=2048
+# Expected target major version prefix for the registry check (23 for 23ai/26ai).
+TARGET_EXPECTED_VERSION=23
+
+
+#------------------------------------------------------------------------------
+# TRANSPORT_* : how backup pieces move from SOURCE to TARGET.
+#
+# TRANSPORT_METHOD selects the approach, and that choice decides what auth (if
+# any) is needed:
+#   shared  -> backup is written to / read from a pre-mounted path both hosts
+#              see (e.g. NFS). NO SSH, NO password, NO copy (verify-only). Set
+#              TRANSPORT_SHARED_PATH and you are done - nothing else below applies.
+#   scp     -> copy over SSH (default). Needs a NON-INTERACTIVE auth path:
+#              either an SSH key (recommended) or a password via sshpass (below).
+#   rsync   -> same auth rules as scp; resumable, supports --bwlimit.
+#
+# SAME HOST: if SOURCE_HOST and TARGET_HOST resolve to this machine (localhost,
+# its hostname, or ANY of its own IPs), the backup is copied locally with cp -
+# no SSH, no password, regardless of method. Preflight confirms this in seconds.
+#
+# When SOURCE and TARGET are DIFFERENT hosts and method is scp/rsync, preflight
+# FAILS FAST unless a non-interactive transport is configured (key, sshpass
+# password, or shared). This prevents a one-shot run from stalling on a password
+# prompt deep in the transfer phase.
+#------------------------------------------------------------------------------
+# Transfer method: scp | rsync | shared. 'shared' is verify-only (no copy).
+TRANSPORT_METHOD=scp
+# [recommended] Private key for the transfer channel; defaults to the role SSH
+# key (TARGET_SSH_KEY) when unset. Passwordless key auth is the preferred way to
+# make one-shot end-to-end work across two hosts.
+#TRANSPORT_SSH_KEY=/home/oracle/.ssh/id_rsa_migration
+# [cond] Password FALLBACK for scp/rsync when key-based auth is not possible.
+# This is a SECRET: do NOT put it here - set TRANSPORT_SSH_PASSWORD in the 0600
+# SECRETS_FILE (see conf/secrets.env.example). Requires 'sshpass' on the runner.
+# Keys or 'shared' are preferred; a stored SSH password is a weaker posture.
+# Bandwidth cap in KB/s (0 = unlimited).
+TRANSPORT_BANDWIDTH_KBPS=0
+# Compress on the wire where the method supports it.
+TRANSPORT_COMPRESS=true
+# [cond] Pre-mounted shared path visible to both hosts; required when
+# TRANSPORT_METHOD=shared.
+#TRANSPORT_SHARED_PATH=/nfs/migration/transfer
+# Number of transfer retries per artifact.
+TRANSPORT_RETRIES=2
+# Force the over-the-wire path (scp/rsync) even when SOURCE and TARGET resolve
+# to the SAME host - used to exercise/validate the remote copy on a single box
+# (set up the oracle user's key to itself first). Ignored for 'shared'. Default
+# false: a genuine single-host run copies locally with no SSH.
+#FORCE_REMOTE_TRANSPORT=false
+
+
+#------------------------------------------------------------------------------
+# AUTOUPGRADE_* : the 26ai AutoUpgrade (plug-in) phase. Always run -noconsole.
+#------------------------------------------------------------------------------
+# Path to autoupgrade.jar. Defaults to <TARGET_26AI_HOME>/rdbms/admin/autoupgrade.jar.
+#AUTOUPGRADE_JAR=/u01/app/oracle/product/26.0.0/dbhome_1/rdbms/admin/autoupgrade.jar
+# Java binary used to run the jar. Defaults to <TARGET_26AI_HOME>/jdk/bin/java.
+#AUTOUPGRADE_JAVA=/u01/app/oracle/product/26.0.0/dbhome_1/jdk/bin/java
+# AutoUpgrade log directory (global.autoupg_log_dir). Defaults to
+# <TARGET_ORACLE_BASE>/autoupgrade/<MIGRATION_ID>.
+#AUTOUPGRADE_LOG_DIR=
+# [cond] file_name_convert for the PDB copy, e.g. file_name_convert=('/old','/new').
+# Mitigates ORA-65005 when datafile paths clash. Empty -> line omitted.
+#AUTOUPGRADE_TARGET_PDB_COPY_OPTION=
+# Verbatim extra 'upg1.*' lines appended to the AutoUpgrade config. This is the
+# ONLY place a verified-before-use parallelism key may go. Empty -> omitted.
+#AUTOUPGRADE_EXTRA_OPTIONS=
+# AutoUpgrade start time (NOW or an AutoUpgrade-accepted timestamp).
+AUTOUPGRADE_START_TIME=NOW
+# Deploy watchdog timeout in minutes (0 = wait indefinitely).
+AUTOUPGRADE_TIMEOUT_MIN=0
+# Deploy poll interval in seconds (minimum 5).
+AUTOUPGRADE_DEPLOY_POLL_SEC=30
+
+
+#------------------------------------------------------------------------------
+# BEHAVIOR_* and global toggles.
+#------------------------------------------------------------------------------
+# Name policy. true: derive TARGET_PDB_NAME / TARGET_STAGING_DB_NAME from the
+# source DB name (same name). false: you MUST set both TARGET_PDB_NAME and
+# TARGET_STAGING_DB_NAME to migrate under a different name.
+MATCH_SOURCE_NAME=true
+# Base directory for per-run logs, state, rendered templates and the manifest.
+# Defaults to <toolkit>/run. Nothing under here is committed.
+#BEHAVIOR_LOG_BASE_DIR=/u01/app/oracle/migration-runs
+# Move aside stale unified-audit .bin files when they block AutoUpgrade.
+BEHAVIOR_AUDIT_REMEDIATION=true
+# Where quarantined audit .bin files are moved. Defaults to
+# <TARGET_ORACLE_BASE>/audit_quarantine. Files are moved, never deleted.
+#BEHAVIOR_AUDIT_BACKUP_DIR=
+# Which host's audit files may be remediated: staging | both | source.
+BEHAVIOR_AUDIT_REMEDIATION_SCOPE=staging
+# Single-scalar SQL used to prove data survived the migration. It is run on the
+# source at backup and inside the migrated PDB at verify, and the results are
+# compared. Empty -> proof step is skipped with a warning.
+# Example used in the reference test: select count(*) from migdemo.proof
+BEHAVIOR_PROOF_QUERY=select count(*) from dual
+# How to compare the proof scalar: exact (source == target) | nonzero (> 0).
+BEHAVIOR_PROOF_MATCH=exact
+# Staging-instance teardown policy: manual | on_success | never.
+BEHAVIOR_TEARDOWN_STAGING=manual
+# Free-space safety factor for sizing SOURCE_BACKUP_DIR (1.0 = no headroom added).
+BEHAVIOR_BACKUP_SPACE_FACTOR=1.0
+# Free-space safety factor for sizing the restore destinations.
+BEHAVIOR_RESTORE_SPACE_FACTOR=1.2
+# Optional path to a 0600 secrets file (see conf/secrets.env.example). If set it
+# must exist, be mode 0600, and be owned by the invoking user.
+#SECRETS_FILE=/home/oracle/.migration/secrets.env

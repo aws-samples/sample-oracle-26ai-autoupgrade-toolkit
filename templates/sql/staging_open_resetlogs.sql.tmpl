@@ -1,0 +1,5 @@
+-- staging_open_resetlogs: a restored database with a fresh control file must be
+-- opened with RESETLOGS. Run via sqlplus after the redo members are relocated.
+whenever sqlerror exit failure
+alter database open resetlogs;
+exit
