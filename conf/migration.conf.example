@@ -24,8 +24,8 @@
 #------------------------------------------------------------------------------
 # SOURCE_* : the running 19c non-CDB and the host it lives on.
 #------------------------------------------------------------------------------
-# Hostname or IP of the source host. Leave as localhost for a single-host test.
-SOURCE_HOST=localhost
+# Hostname or IP of the source host (the machine running the 19c non-CDB).
+SOURCE_HOST=source-host.example.com
 # SSH login user on the source host (used only when SOURCE_HOST is remote).
 SOURCE_SSH_USER=oracle
 # SSH port on the source host.
@@ -54,7 +54,7 @@ SOURCE_EXPECTED_VERSION=19
 # Expected source database character set (advisory preflight check).
 SOURCE_EXPECTED_CHARSET=AL32UTF8
 # [cond] Last-resort datafile/redo path list (space-separated) used ONLY for the
-# single-host overlap check when the source is unreachable at preflight. A run
+# datafile/redo overlap check when the source is unreachable at preflight. A run
 # that proceeds to backup still requires the source OPEN READ WRITE.
 #SOURCE_DATAFILE_PATHS=/u02/oradata/ORCL/system01.dbf /u02/oradata/ORCL/sysaux01.dbf
 
@@ -94,9 +94,9 @@ SOURCE_RMAN_ROLE=sysbackup
 # TARGET_* : the host that holds the pre-installed 19c staging home and the
 #            26ai home, and that will run the destination CDB.
 #------------------------------------------------------------------------------
-# Hostname or IP of the target host. Leave as localhost to collapse SOURCE and
-# TARGET onto one host (single-host test mode).
-TARGET_HOST=localhost
+# Hostname or IP of the target host (holds the 19c staging + 26ai homes and the
+# CDB). This is the machine you run the toolkit on.
+TARGET_HOST=target-host.example.com
 # SSH login user on the target host (used only when TARGET_HOST is remote).
 TARGET_SSH_USER=oracle
 # SSH port on the target host.
@@ -152,10 +152,6 @@ TARGET_EXPECTED_VERSION=23
 #              either an SSH key (recommended) or a password via sshpass (below).
 #   rsync   -> same auth rules as scp; resumable, supports --bwlimit.
 #
-# SAME HOST: if SOURCE_HOST and TARGET_HOST resolve to this machine (localhost,
-# its hostname, or ANY of its own IPs), the backup is copied locally with cp -
-# no SSH, no password, regardless of method. Preflight confirms this in seconds.
-#
 # When SOURCE and TARGET are DIFFERENT hosts and method is scp/rsync, preflight
 # FAILS FAST unless a non-interactive transport is configured (key, sshpass
 # password, or shared). This prevents a one-shot run from stalling on a password
@@ -180,11 +176,6 @@ TRANSPORT_COMPRESS=true
 #TRANSPORT_SHARED_PATH=/nfs/migration/transfer
 # Number of transfer retries per artifact.
 TRANSPORT_RETRIES=2
-# Force the over-the-wire path (scp/rsync) even when SOURCE and TARGET resolve
-# to the SAME host - used to exercise/validate the remote copy on a single box
-# (set up the oracle user's key to itself first). Ignored for 'shared'. Default
-# false: a genuine single-host run copies locally with no SSH.
-#FORCE_REMOTE_TRANSPORT=false
 
 
 #------------------------------------------------------------------------------

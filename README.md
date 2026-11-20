@@ -30,7 +30,7 @@ never live in that config.
 
 0. [Glossary (plain English)](#0-glossary-plain-english)
 1. [What this toolkit does, in one picture](#1-what-this-toolkit-does-in-one-picture)
-2. [The three ways you can run it (topologies)](#2-the-three-ways-you-can-run-it-topologies)
+2. [The two ways you can run it (topologies)](#2-the-two-ways-you-can-run-it-topologies)
 3. [Prerequisites — what must exist before you start](#3-prerequisites--what-must-exist-before-you-start)
 4. [Folder layout](#4-folder-layout)
 5. [Quick start](#5-quick-start)
@@ -128,62 +128,53 @@ database — it just backs it up. Everything it *creates* lives on the target.
 
 ---
 
-## 2. The three ways you can run it (topologies)
+## 2. The two ways you can run it (topologies)
 
-The **same code** supports all three. You choose by setting `SOURCE_HOST`,
-`TARGET_HOST`, and (for the third case) `FORCE_REMOTE_TRANSPORT`.
+The 19c **source** database and the 26ai **target** CDB are two different
+systems with two different hostnames. You choose how the toolkit reaches the
+source by setting `SOURCE_HOST`/`TARGET_HOST` and `SOURCE_CONN_MODE`.
 
-### A. Two separate hosts (source and target on different machines)
-Source DB on host A, the 19c/26ai homes and the CDB on host B.
+### A. Two hosts with OS/SSH access to the source (the standard case)
+The 19c source database runs on the **source host**; the 19c staging home, the
+26ai home, and the destination CDB run on the **target host** — two different
+machines with two different hostnames.
 
-- Set `SOURCE_HOST`/`TARGET_HOST` to the two real hostnames or IPs.
-- The backup is copied from A to B over **SSH** (`scp` or `rsync`), or placed on
-  a **shared mount** both can see.
-- You must give the `oracle` user a **non‑interactive** way to copy: an SSH key
-  (recommended), or a password via `sshpass`, or the shared mount. See
+- Set `SOURCE_HOST` and `TARGET_HOST` to the two real hostnames or IPs (for
+  example `source-host.example.com` and `target-host.example.com`).
+- The backup is copied from the source host to the target host over **SSH**
+  (`scp` or `rsync`), or placed on a **shared mount** both can see.
+- Give the `oracle` user a **non-interactive** way to copy: an SSH key
+  (preferred), a password via `sshpass`, or the shared mount. See
   [section 8](#8-how-files-get-from-source-to-target-transport-in-depth).
 
-### B. One host (source and target are the same machine)
-Common for consolidation or a lab. Set `SOURCE_HOST`/`TARGET_HOST` to
-`localhost` (or the machine's own hostname/IP — the toolkit recognizes its own
-addresses). The copy degrades automatically to a **local file copy** (`cp`/local
-`rsync`) — no SSH needed. The staging SID is forced to differ from the live
-source SID so the two instances never clash.
-
-### C. One host, but *rehearse* the over‑the‑wire copy
-If you want to test the real `scp` path on a single box (to validate keys,
-bandwidth, logging) before a true two‑host run, set `FORCE_REMOTE_TRANSPORT=true`.
-That forces `scp`/`rsync` even though both endpoints are this machine (you give
-`oracle` an SSH key to itself). **This is a testing lever only** — in a genuine
-two‑host run you do *not* set it, because the hosts already differ.
-
-### D. Source reached over Oracle Net (no SSH or OS login to the source)
-In many shops you are **not** given SSH or an OS login on the source, only a
+### B. Source reached over Oracle Net (no SSH or OS login to the source)
+In many shops you are **not** given SSH or an OS login on the source host, only a
 database account. Set `SOURCE_CONN_MODE=net` and the toolkit talks to the source
 purely over Oracle Net with a full connect string
-(`user/password@//host:port/service`), the way any DBA connects from a client.
-In this mode:
+(`user/password@//source-host:port/service`), the way any DBA connects from a
+client. In this mode:
 
 - The source **manifest** and **proof** are read over Oracle Net with `sqlplus`.
-- The RMAN **backup runs as a server session on the source**
-  (`rman target "user/pw@//host:port/service as sysbackup"`), so the pieces are
-  written by the source instance itself onto a **shared mount** both hosts can
-  see. Net mode therefore **requires `TRANSPORT_METHOD=shared`** — there is no
-  SSH to copy a backup off the source.
-- No OS access to the source is used, so source-side audit-file remediation is
-  skipped with a warning.
+- The RMAN **backup runs as a server session on the source host**
+  (`rman target "user/pw@//source-host:port/service as sysbackup"`), so the
+  pieces are written by the source instance itself onto a **shared mount** both
+  hosts can see. Net mode therefore **requires `TRANSPORT_METHOD=shared`** —
+  there is no SSH to copy a backup off the source.
+- No OS access to the source host is used, so source-side audit-file remediation
+  is skipped with a warning.
 
 The default is `SOURCE_CONN_MODE=os` (OS login + `/ as sysdba`, used by
-topologies A–C). See [6.1](#61-source_--the-19c-database-you-migrate-from) for
-every net key and [section 7](#7-secrets-file) for where the password goes.
+topology A). See [6.1](#61-source_--the-19c-database-you-migrate-from) for every
+net key and [section 7](#7-secrets-file) for where the password goes.
 
 ### The tool always runs ON the target host (a hard prerequisite)
 Whichever topology you pick, **run the toolkit on the target host** — the box
 with the staging home, the 26ai home, and the CDB. Building the staging instance
 (`startup nomount`), `nid`, and AutoUpgrade are local operating-system operations
-and **cannot** be driven over Oracle Net, so the target is always local. Only the
-**source** may be remote (over SSH in A/C, or over Oracle Net in D). Preflight
-enforces this and fails fast if `TARGET_HOST` does not resolve to this machine.
+and **cannot** be driven over Oracle Net, so the target host is always local to
+the toolkit. The **source host** is remote — reached over SSH in A, or over
+Oracle Net in B. Preflight enforces this and fails fast if `TARGET_HOST` does not
+resolve to this machine.
 
 ---
 
@@ -340,7 +331,7 @@ live in [`conf/migration.conf.example`](conf/migration.conf.example).
 
 | Key | Required? | Default | Meaning / when to set |
 |-----|-----------|---------|-----------------------|
-| `SOURCE_HOST` | no | `localhost` | Hostname/IP of the source host. `localhost` (or this box's own name/IP) ⇒ single‑host mode. |
+| `SOURCE_HOST` | no | `localhost` | Hostname or IP of the **source host** (e.g. `source-host.example.com`). Set it to your real source hostname. |
 | `SOURCE_SSH_USER` | no | `oracle` | SSH login user when the source is remote. |
 | `SOURCE_SSH_PORT` | no | `22` | SSH port for the source. |
 | `SOURCE_SSH_KEY` | only if source is remote | — | Private key to SSH to the source. Mode must be ≤ `0600`. |
@@ -353,8 +344,8 @@ live in [`conf/migration.conf.example`](conf/migration.conf.example).
 | `SOURCE_BACKUP_TAG` | no | `MIG_<UTC_TS>` | Backup tag. Left unset it is auto‑generated and stored in the manifest so later phases/resumes reuse the same one. |
 | `SOURCE_EXPECTED_VERSION` | no | `19` | Advisory preflight check of the source major version. |
 | `SOURCE_EXPECTED_CHARSET` | no | `AL32UTF8` | Advisory preflight check of the character set. |
-| `SOURCE_DATAFILE_PATHS` | only as a fallback | — | Space‑separated datafile/redo paths, used **only** for the single‑host overlap check when the source is unreachable at preflight. |
-| `SOURCE_CONN_MODE` | no | `os` | `os` = SSH/OS login + `/ as sysdba` (topologies A–C). `net` = reach the source over Oracle Net (topology D); requires `TRANSPORT_METHOD=shared`. |
+| `SOURCE_DATAFILE_PATHS` | only as a fallback | — | Space‑separated datafile/redo paths, used **only** for the datafile/redo overlap check when the source is unreachable at preflight. |
+| `SOURCE_CONN_MODE` | no | `os` | `os` = SSH/OS login + `/ as sysdba` (topology A). `net` = reach the source over Oracle Net (topology B); requires `TRANSPORT_METHOD=shared`. |
 | `SOURCE_CONNECT_STRING` | net: this or the host/port/service trio | — | Full source connect string, e.g. `//host:port/service` (EZConnect) or a TNS alias. Used by both `sqlplus` and RMAN. |
 | `SOURCE_DB_HOST` / `SOURCE_DB_PORT` / `SOURCE_DB_SERVICE` | net: if no `SOURCE_CONNECT_STRING` | port `1521` | Build the descriptor from parts when you did not give `SOURCE_CONNECT_STRING`. |
 | `SOURCE_DB_USER` | yes if `net` | — | Migration DB account (need not be SYS). |
@@ -366,7 +357,7 @@ live in [`conf/migration.conf.example`](conf/migration.conf.example).
 
 | Key | Required? | Default | Meaning / when to set |
 |-----|-----------|---------|-----------------------|
-| `TARGET_HOST` | no | `localhost` | Hostname/IP of the target host. `localhost`/own name/IP ⇒ single‑host. |
+| `TARGET_HOST` | no | `localhost` | Hostname or IP of the **target host** (e.g. `target-host.example.com`) — the machine you run the toolkit on. |
 | `TARGET_SSH_USER` | no | `oracle` | SSH login user when the target is remote. |
 | `TARGET_SSH_PORT` | no | `22` | SSH port for the target. |
 | `TARGET_SSH_KEY` | only if target is remote | — | Private key to SSH to the target. Mode ≤ `0600`. Also used by the transfer if `TRANSPORT_SSH_KEY` is unset. |
@@ -374,11 +365,11 @@ live in [`conf/migration.conf.example`](conf/migration.conf.example).
 | `TARGET_ORACLE_BASE` | **yes** | — | `ORACLE_BASE` on the target. |
 | `TARGET_STAGING_HOME` | **yes** | — | 19c staging `ORACLE_HOME` (must have `bin/rman`, `bin/nid`, `bin/sqlplus`). |
 | `TARGET_26AI_HOME` | **yes** | — | 26ai `ORACLE_HOME` (must have the AutoUpgrade jar and a JDK). |
-| `TARGET_CDB_SID` | **yes** | — | SID of the destination CDB. Must differ from the source SID and (on one host) from the staging SID. |
+| `TARGET_CDB_SID` | **yes** | — | SID of the destination CDB. Must differ from the source SID and the staging SID. |
 | `TARGET_TRANSFER_DIR` | **yes** | — | Directory on the target that receives the shipped backup pieces. |
 | `TARGET_DATAFILE_DEST` | **yes** | — | OMF base for the restored datafiles (`db_create_file_dest`). Needs space for the full DB. **Use a distinct directory per migration** (see NOCOPY rule, section 11). |
 | `TARGET_REDO_DEST` | no | = `TARGET_DATAFILE_DEST` | Where relocated online redo logs go. |
-| `TARGET_STAGING_SID` | no | derived | Staging instance SID. Left unset it is derived to be distinct from the CDB SID (and from the live source SID on one host). |
+| `TARGET_STAGING_SID` | no | derived | Staging instance SID. Left unset it is derived to be distinct from the CDB SID and the source SID. |
 | `TARGET_STAGING_DB_NAME` | yes if `MATCH_SOURCE_NAME=false` | = `SOURCE_DB_NAME` | The staging DB name. If it differs from `SOURCE_DB_NAME`, a `nid` rename runs. |
 | `TARGET_PDB_NAME` | yes if `MATCH_SOURCE_NAME=false` | derived from `SOURCE_DB_NAME` | Name of the PDB created in the CDB. Regex `^[A-Za-z][A-Za-z0-9_$]{0,29}$`. |
 | `TARGET_STAGING_MEMORY_MB` | no | `2048` | Memory (MB) for the staging instance. Minimum `800`. Split 75% SGA / 25% PGA internally. |
@@ -399,7 +390,6 @@ full decision logic. Keys:
 | `TRANSPORT_COMPRESS` | no | `true` | Compress on the wire where the method supports it (`-C`/`-z`). |
 | `TRANSPORT_SHARED_PATH` | yes if `TRANSPORT_METHOD=shared` | — | Pre‑mounted path both hosts can see. |
 | `TRANSPORT_RETRIES` | no | `2` | Transfer retry attempts per transfer. |
-| `FORCE_REMOTE_TRANSPORT` | no | `false` | **Testing lever.** Force `scp`/`rsync` even when both hosts resolve to this machine. Never applies to `shared`. |
 
 ### 6.4 AUTOUPGRADE_* — the upgrade/plug‑in phase
 
@@ -434,8 +424,8 @@ full decision logic. Keys:
 
 Printed in the plan, not set by you: `MIGRATION_ID`
 (`<TARGET_CDB_SID>__<TARGET_PDB_NAME>`), `staging_on_source_host`, a derived
-`TARGET_STAGING_SID` (on one host becomes `<SOURCE_DB_NAME>S`, falling back to
-`STG1`..`STG9`, always distinct from the CDB and live source SIDs),
+`TARGET_STAGING_SID` (derived as `<SOURCE_DB_NAME>S`, falling back to
+`STG1`..`STG9`, always distinct from the CDB and source SIDs),
 `TARGET_PDB_NAME`/`TARGET_STAGING_DB_NAME` when `MATCH_SOURCE_NAME=true`,
 `SOURCE_BACKUP_TAG` (`MIG_<UTC_TS>`), and `SOURCE_BACKUP_RUN_DIR`
 (`<SOURCE_BACKUP_DIR>/<SOURCE_BACKUP_TAG>`). The phase scripts also build internal
@@ -475,18 +465,16 @@ gate 8 refuses to let the `*.example` files carry a real secret value.
 
 This is the part people get wrong, so it is spelled out completely.
 
-### 8.1 Same host vs different host
-The toolkit calls a host "local" if it is `localhost`, `127.0.0.1`, `::1`, this
-machine's hostname (short or FQDN), **or any IP address bound to this machine**.
-If **both** `SOURCE_HOST` and `TARGET_HOST` are local, the backup is copied with
-a **local file copy** (`rsync -a` if present, else `cp -pR`) — no SSH, no
-password. That is the right, efficient behavior for a genuine single‑host
-migration.
+### 8.1 How the toolkit reaches the source host
+The toolkit runs on the **target host** and moves the backup from the **source
+host** into `TARGET_TRANSFER_DIR` using the configured method (8.2): SSH
+(`scp`/`rsync`), or a **shared mount** both hosts see. In net mode the source
+instance writes the pieces straight onto the shared mount over Oracle Net.
+`SOURCE_HOST` and `TARGET_HOST` name the two machines.
 
 ### 8.2 The three methods (`TRANSPORT_METHOD`)
-- **`scp`** (default): copy over SSH, pushing from the source‑local backup dir to
-  `TARGET:TARGET_TRANSFER_DIR`. (The toolkit runs on the source side in the
-  two‑host model.)
+- **`scp`** (default): copy over SSH from the source host's backup dir to
+  `TARGET_TRANSFER_DIR` on the target.
 - **`rsync`**: same idea, resumable, honors `TRANSPORT_BANDWIDTH_KBPS`.
 - **`shared`**: no copy at all. Both hosts already see `TRANSPORT_SHARED_PATH`
   (e.g. an NFS mount); the toolkit just verifies the pieces are present. **No SSH
@@ -513,46 +501,27 @@ Resolved automatically, in this order:
 > `TRANSPORT_SHARED_PATH`), or **(d)** copy the backup to `TARGET_TRANSFER_DIR`
 > manually, then resume with `--from target_restore`.
 
-### 8.5 `FORCE_REMOTE_TRANSPORT` (rehearsing the wire on one box)
-Set `FORCE_REMOTE_TRANSPORT=true` to force `scp`/`rsync` even though both hosts
-resolve to this machine. Give `oracle` an SSH key to itself first:
-
-```bash
-sudo -u oracle bash -c '
-  mkdir -p ~/.ssh && chmod 700 ~/.ssh
-  [ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
-  grep -qF "$(cat ~/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys 2>/dev/null || cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-  chmod 600 ~/.ssh/authorized_keys ~/.ssh/id_rsa
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new oracle@<this-ip> true && echo OK'
-```
-
-then set `TARGET_SSH_KEY=/home/oracle/.ssh/id_rsa` and
-`FORCE_REMOTE_TRANSPORT=true`. **Do not** set this flag in a real two‑host run.
-
-### 8.6 What the transfer logs (observability)
+### 8.5 What the transfer logs (observability)
 The transfer phase prints, for each run:
 - the **exact command** it is about to run, e.g.
   `[transfer] exec: scp -P 22 … -i /home/oracle/.ssh/id_rsa <src>/* oracle@<host>:<dst>/`
   (passwords are never shown — `sshpass -e` reads the password from the
   environment);
-- the **actual method chosen** — `local-cp (same host, no SSH)`,
-  `scp (over SSH)`, `rsync (over SSH)`, or `shared (verify-only, no copy)` — not
-  just the configured method;
+- the **actual method chosen** — `scp (over SSH)`, `rsync (over SSH)`, or
+  `shared (verify-only, no copy)` — not just the configured method;
 - a **destination listing** after the copy: the absolute directory, the host that
   holds it, every file with its byte size, and a `N file(s), M bytes total`
   summary;
 - then a `verified <piece>` line per piece (sha256 checked against the manifest).
 
-### 8.7 Transport decision table
+### 8.6 Transport decision table
 
-| Both hosts local? | `FORCE_REMOTE_TRANSPORT` | `TRANSPORT_METHOD` | Result |
-|---|---|---|---|
-| yes | false | any (non‑shared) | local `cp`/`rsync`, no SSH |
-| yes | true | `scp`/`rsync` | real `scp`/`rsync` over SSH (needs key or password) |
-| any | — | `shared` | verify‑only on `TRANSPORT_SHARED_PATH`, no SSH/copy |
-| no (different hosts) | — | `scp`/`rsync` + key | `scp`/`rsync`, key auth, one‑shot ✅ |
-| no | — | `scp`/`rsync` + `TRANSPORT_SSH_PASSWORD` + sshpass | `scp`/`rsync`, password auth, one‑shot ✅ |
-| no | — | `scp`/`rsync`, no key/password | **preflight fails fast** with the (a)/(b)/(c)/(d) message |
+| `TRANSPORT_METHOD` | Auth available | Result |
+|---|---|---|
+| `scp`/`rsync` | SSH key | `scp`/`rsync` over SSH, key auth, one‑shot ✅ |
+| `scp`/`rsync` | `TRANSPORT_SSH_PASSWORD` + `sshpass` | `scp`/`rsync` over SSH, password auth, one‑shot ✅ |
+| `scp`/`rsync` | neither | **preflight fails fast** with the (a)/(b)/(c)/(d) message |
+| `shared` | — | verify‑only on `TRANSPORT_SHARED_PATH`, no SSH/copy |
 
 ---
 
@@ -599,7 +568,7 @@ those under the **same** `MIGRATION_ID` and try to resume, it refuses:
 This is intentional — it stops you from silently mixing two different setups into
 one migration's state. **Changing hosts/identity means a new migration**, so pick
 a new `TARGET_PDB_NAME` (which changes `MIGRATION_ID`) or revert the changed keys.
-Transport‑only keys (`FORCE_REMOTE_TRANSPORT`, `TARGET_SSH_KEY`) are **not** in the
+Transport‑only keys (`TARGET_SSH_KEY`, `TRANSPORT_SSH_KEY`) are **not** in the
 digest and never trip it.
 
 ### 9.5 Staged run (recommended for first‑time/learning)
@@ -642,8 +611,9 @@ exit code. In `--dry-run`, every phase only renders templates and prints a plan.
 9. **Free space** on `SOURCE_BACKUP_DIR`, `TARGET_TRANSFER_DIR`,
    `TARGET_DATAFILE_DEST` (and `TARGET_REDO_DEST` if different), sized from live
    `v$datafile`/`v$tempfile`/`v$log` totals × the space factors.
-10. **Single‑host isolation**: on one host, the target datafile/redo/`dbs` paths
-    must not overlap the live source's datafile/redo directories.
+10. **Overlap isolation** (only when the source and target resolve to the same
+    host): the target datafile/redo/`dbs` paths must not overlap the source's
+    live datafile/redo directories.
 
 ### Phase 1 — `source_backup` (exit `5` on failure)
 1. Captures the **manifest** from the open source: DBID, charset, db_name, every
@@ -815,10 +785,10 @@ operator to reclaim").
 In all examples, replace placeholders and run as/through the `oracle` OS user.
 Dry‑run first every time.
 
-### 14.1 Single host, same database name
+### 14.1 Keep the same database name (PDB named after the source)
 ```ini
-SOURCE_HOST=localhost
-TARGET_HOST=localhost
+SOURCE_HOST=source-host.example.com
+TARGET_HOST=target-host.example.com
 MATCH_SOURCE_NAME=true        # PDB + staging names derived from SOURCE_DB_NAME
 ```
 ```bash
@@ -826,7 +796,7 @@ bin/migrate.sh --dry-run --config conf/migration.conf
 bin/migrate.sh --config conf/migration.conf --yes
 ```
 
-### 14.2 Single host, migrate under a NEW name
+### 14.2 Migrate under a NEW name
 ```ini
 MATCH_SOURCE_NAME=false
 TARGET_PDB_NAME=PRODPDB
@@ -863,42 +833,31 @@ TRANSPORT_METHOD=shared
 TRANSPORT_SHARED_PATH=/nfs/migration/transfer
 ```
 
-### 14.6 Rehearse the real scp copy on a single box
-Set up the oracle self‑key (section 8.5), then:
-```ini
-SOURCE_HOST=<this-ip>
-TARGET_HOST=<this-ip>
-TARGET_SSH_KEY=/home/oracle/.ssh/id_rsa
-FORCE_REMOTE_TRANSPORT=true
-```
-Because this changes the hosts, it is a **new** migration identity — use a fresh
-`TARGET_PDB_NAME` (see the CONFIG_SHA guard, 9.4).
-
-### 14.7 Resume after a failure
+### 14.6 Resume after a failure
 Just re‑run with no step flags — it resumes from the first non‑`DONE` step:
 ```bash
 bin/migrate.sh --config conf/migration.conf --yes
 ```
 
-### 14.8 Re‑run one phase deliberately
+### 14.7 Re‑run one phase deliberately
 ```bash
 bin/migrate.sh --config conf/migration.conf --only transfer --yes
 ```
 
-### 14.9 The copy is manual (air‑gapped) — skip transport
+### 14.8 The copy is manual (air‑gapped) — skip transport
 Copy the pieces + `manifest.env` into `TARGET_TRANSFER_DIR` yourself, then:
 ```bash
 bin/migrate.sh --config conf/migration.conf --from target_restore --yes
 ```
 
-### 14.10 A PDB of that name already exists
+### 14.9 A PDB of that name already exists
 Re‑run `autoupgrade` with `--force` (drops the colliding PDB *including
 datafiles* after a prompt; add `--yes` to skip the prompt):
 ```bash
 bin/migrate.sh --config conf/migration.conf --only autoupgrade --force
 ```
 
-### 14.11 Source over Oracle Net (no SSH or OS login to the source)
+### 14.10 Source over Oracle Net (no SSH or OS login to the source)
 You have only a database account on the source, not an OS/SSH login. Run the
 toolkit **on the target host**, with a shared mount both hosts can see.
 
@@ -931,8 +890,11 @@ section 11 ("Protect and delete the backup pieces").
 
 ## 15. Known‑good runbook (a full run that succeeded)
 
-This is the exact shape of a validated single‑host run (names are illustrative).
-Expected success tails are shown so you know what "good" looks like.
+This is the exact shape of a run that completed end to end (hostnames are
+illustrative). It was validated with the **source reached over Oracle Net**
+(`SOURCE_CONN_MODE=net`) and a **shared** transfer mount, with the toolkit running
+on the target host — i.e. source and target as separate endpoints. Expected
+success tails are shown so you know what "good" looks like.
 
 **Single‑shot (one command, all phases):**
 ```bash
@@ -948,9 +910,9 @@ proof inside PDB=3 (source=3, match=exact)
 ```
 
 **Staged (one phase at a time)** — same six commands as [9.5](#95-staged-run-recommended-for-first-timelearning). Key success lines per phase:
-- preflight: `transport: … same host; backup copied locally` (or `transport auth: SSH key OK`), then `==== step done: preflight ====`
+- preflight: `[TARGET] running on the target host …`, `[SOURCE] Oracle Net connect OK …` (or `transport auth: SSH key OK`), `SOURCE_PRECHECK_OK … READ WRITE`, `PDB slots: …`, then `==== step done: preflight ====`
 - source_backup: `enumerated 7 backup piece(s)` … `==== step done: source_backup ====`
-- transfer: `transfer attempt 1 succeeded (method=local-cp (same host, no SSH))`, a `[transfer] artifacts landed at: …` listing, 7× `verified …`
+- transfer: `transfer attempt 1 succeeded (method=shared (verify-only, no copy))`, a `[transfer] artifacts landed at: …` listing, 7× `verified …`
 - target_restore: `nid` rename (if renaming), `==== step done: target_restore ====`
 - autoupgrade: `deploy succeeded (jobs finished=1, failed=0)`
 - verify: `registry … VALID`, `proof inside PDB=N (source=N, match=exact)`
